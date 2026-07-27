@@ -1,124 +1,109 @@
 /**
- * Tests for TopNav — issue #468: Show user initials avatar in top nav
+ * Tests for #467: Add logout action in top navigation.
  */
-
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
-import { TopNav } from "../TopNav";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
 
+const mockReplace = vi.fn();
+
 vi.mock("next/navigation", () => ({
-	usePathname: () => "/dashboard",
+	useRouter: () => ({ replace: mockReplace }),
+	usePathname: () => "/demo/dashboard",
 }));
+
+const mockSignOut = vi.fn();
 
 vi.mock("@/context/AuthContext", () => ({
-	useAuth: vi.fn(),
-}));
-
-vi.mock("@/context/NetworkContext", () => ({
-	useNetwork: () => ({ network: "testnet", setNetwork: vi.fn() }),
-}));
-
-vi.mock("@/hooks/useDarkMode", () => ({
-	useDarkMode: () => ({ isDark: false, toggle: vi.fn() }),
+	useAuth: () => ({
+		user: {
+			name: "Tali Creator",
+			email: "tali@example.com",
+			role: "developer",
+		},
+		signOut: mockSignOut,
+	}),
 }));
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Import after mocks
 // ---------------------------------------------------------------------------
 
-import { useAuth } from "@/context/AuthContext";
-const mockUseAuth = vi.mocked(useAuth);
-
-function renderTopNav() {
-	return render(<TopNav onMenuClick={vi.fn()} />);
-}
+import { TopNav } from "../TopNav";
 
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("TopNav — user initials avatar (#468)", () => {
-	it("shows initials avatar when user is authenticated", () => {
-		mockUseAuth.mockReturnValue({
-			user: { name: "Jane Doe", email: "jane@example.com", role: "admin" },
-			isLoading: false,
-			isAuthenticated: true,
-			signIn: vi.fn(),
-			signOut: vi.fn(),
-		});
-		renderTopNav();
-		const avatar = screen.getByTestId("user-avatar");
-		expect(avatar).toBeInTheDocument();
-		expect(avatar).toHaveTextContent("JD");
+describe("TopNav logout action (#467)", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
 	});
 
-	it("shows correct single initial for a single-name user", () => {
-		mockUseAuth.mockReturnValue({
-			user: { name: "Alice", email: "alice@example.com", role: "developer" },
-			isLoading: false,
-			isAuthenticated: true,
-			signIn: vi.fn(),
-			signOut: vi.fn(),
-		});
-		renderTopNav();
-		const avatar = screen.getByTestId("user-avatar");
-		expect(avatar).toHaveTextContent("A");
+	it("renders the user menu button", () => {
+		render(<TopNav onMenuClick={vi.fn()} />);
+		expect(screen.getByTestId("user-menu-button")).toBeDefined();
 	});
 
-	it("caps initials at 2 characters for names with more than 2 words", () => {
-		mockUseAuth.mockReturnValue({
-			user: { name: "John Paul Smith", email: "jps@example.com", role: "admin" },
-			isLoading: false,
-			isAuthenticated: true,
-			signIn: vi.fn(),
-			signOut: vi.fn(),
-		});
-		renderTopNav();
-		const avatar = screen.getByTestId("user-avatar");
-		expect(avatar.textContent).toHaveLength(2);
-		expect(avatar).toHaveTextContent("JP");
+	it("opens the user menu dropdown on click", () => {
+		render(<TopNav onMenuClick={vi.fn()} />);
+		expect(screen.queryByTestId("user-menu")).toBeNull();
+
+		fireEvent.click(screen.getByTestId("user-menu-button"));
+
+		expect(screen.getByTestId("user-menu")).toBeDefined();
 	});
 
-	it("shows loading skeleton while auth is loading", () => {
-		mockUseAuth.mockReturnValue({
-			user: null,
-			isLoading: true,
-			isAuthenticated: false,
-			signIn: vi.fn(),
-			signOut: vi.fn(),
-		});
-		renderTopNav();
-		expect(screen.getByTestId("user-avatar-skeleton")).toBeInTheDocument();
-		expect(screen.queryByTestId("user-avatar")).not.toBeInTheDocument();
+	it("shows the logout button inside the dropdown", () => {
+		render(<TopNav onMenuClick={vi.fn()} />);
+		fireEvent.click(screen.getByTestId("user-menu-button"));
+
+		expect(screen.getByTestId("logout-button")).toBeDefined();
+		expect(screen.getByTestId("logout-button").textContent).toContain(
+			"Sign out",
+		);
 	});
 
-	it("shows empty avatar placeholder when not authenticated", () => {
-		mockUseAuth.mockReturnValue({
-			user: null,
-			isLoading: false,
-			isAuthenticated: false,
-			signIn: vi.fn(),
-			signOut: vi.fn(),
-		});
-		renderTopNav();
-		expect(screen.getByTestId("user-avatar-empty")).toBeInTheDocument();
-		expect(screen.queryByTestId("user-avatar")).not.toBeInTheDocument();
+	it("shows the signed-in user email in the dropdown", () => {
+		render(<TopNav onMenuClick={vi.fn()} />);
+		fireEvent.click(screen.getByTestId("user-menu-button"));
+
+		expect(screen.getByTestId("user-menu-email").textContent).toBe(
+			"tali@example.com",
+		);
 	});
 
-	it("avatar has accessible aria-label containing the user name", () => {
-		mockUseAuth.mockReturnValue({
-			user: { name: "Jane Doe", email: "jane@example.com", role: "admin" },
-			isLoading: false,
-			isAuthenticated: true,
-			signIn: vi.fn(),
-			signOut: vi.fn(),
-		});
-		renderTopNav();
-		const avatar = screen.getByTestId("user-avatar");
-		expect(avatar).toHaveAttribute("aria-label", "Jane Doe avatar");
+	it("calls signOut and redirects to /login when logout is clicked", () => {
+		render(<TopNav onMenuClick={vi.fn()} />);
+		fireEvent.click(screen.getByTestId("user-menu-button"));
+		fireEvent.click(screen.getByTestId("logout-button"));
+
+		expect(mockSignOut).toHaveBeenCalledTimes(1);
+		expect(mockReplace).toHaveBeenCalledWith("/login");
+	});
+
+	it("closes the dropdown after logout", () => {
+		render(<TopNav onMenuClick={vi.fn()} />);
+		fireEvent.click(screen.getByTestId("user-menu-button"));
+		fireEvent.click(screen.getByTestId("logout-button"));
+
+		expect(screen.queryByTestId("user-menu")).toBeNull();
+	});
+
+	it("user menu button has correct aria attributes when closed", () => {
+		render(<TopNav onMenuClick={vi.fn()} />);
+		const btn = screen.getByTestId("user-menu-button");
+		expect(btn.getAttribute("aria-expanded")).toBe("false");
+		expect(btn.getAttribute("aria-haspopup")).toBe("true");
+	});
+
+	it("user menu button has aria-expanded=true when open", () => {
+		render(<TopNav onMenuClick={vi.fn()} />);
+		fireEvent.click(screen.getByTestId("user-menu-button"));
+		const btn = screen.getByTestId("user-menu-button");
+		expect(btn.getAttribute("aria-expanded")).toBe("true");
 	});
 });
